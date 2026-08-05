@@ -37,7 +37,7 @@ import time
 import socketio
 from urllib.parse import urlparse
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 class VolumioPluginManager:
 
@@ -220,24 +220,41 @@ class VolumioPluginManager:
 
     def show_info(self, name):
         installed, available = self.find_plugin(name)
+
         print()
+
         if available:
             print("Plugin:", available.get("prettyName", name))
             print("Internal name:", name)
+            print("Category:", available.get("category", "?"))
             print("Available version:", available.get("stableVersion"))
+
             variant = self.choose_variant(available)
+
+            print("Selected variant:", variant)
+
             url = (
                 "https://plugins.volumio.workers.dev/pluginsv2/downloadLatestStable/"
                 f"{name}/{variant}"
             )
             print("Download URL:", url)
-            print("Selected variant:", self.choose_variant(available))
+
+        elif installed:
+            print("Plugin:", installed.get("prettyName", name))
+            print("Internal name:", name)
+            print("Category:", installed.get("category", "?"))
+            print("Catalog status: not available")
+
         else:
-            print("Unknown plugin:", name)
+            print("Plugin not found:", name)
+
         print()
+
         if installed:
             print("Installed: yes")
-            print("Installed version:", installed.get("version"))
+            print("Installed version:", installed.get("version", "?"))
+            print("Installed variant: unavailable (not provided by Volumio API)")
+
         else:
             print("Installed: no")
 
