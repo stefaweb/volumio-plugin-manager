@@ -36,12 +36,12 @@ python volumio_plugin_manager.py --help
 
 ## Connecting to a Volumio device
 
-The default device address is `http://192.168.15.1:3000`.
+The default device address is `http://192.168.1.1:3000`.
 
 Use `--host` to connect to another device:
 
 ```bash
-python volumio_plugin_manager.py --host http://192.168.15.1:3000 --list
+python volumio_plugin_manager.py --host http://192.168.1.2:3000 --list
 ```
 
 ## List plugins
@@ -58,7 +58,7 @@ To view the standard Raspberry Pi catalog, query a Raspberry Pi Volumio device:
 
 ```bash
 python volumio_plugin_manager.py \
-  --host http://volumio-bureau.local:3000 \
+  --host http://192.168.1.2:3000 \
   --list
 ```
 
