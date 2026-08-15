@@ -1,4 +1,4 @@
-# Volumio Plugin Manager
+# Volumio Plugin Manager 1.1.4
 
 Manage Volumio plugins through Socket.IO from the command line.
 
