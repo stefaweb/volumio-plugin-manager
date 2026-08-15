@@ -4,12 +4,12 @@
 """
 Volumio Plugin Manager
 Author: Stef
-Date: 05/08/2026
+Date:   15/08/2026
 
 Manage Volumio plugins through Socket.IO.
 
 Compatible:
-- Volumio 3.x
+- Volumio 3.x and 4.x
 - MiniDSP SHD Volumio 3.x
 
 Commands:
@@ -19,6 +19,7 @@ Commands:
     --install-url URL
     --install-variant PLUGIN --variant PLATFORM
     --activate PLUGIN
+    --deactivate PLUGIN
     --remove PLUGIN
     --restart PLUGIN
     --update PLUGIN
@@ -27,7 +28,6 @@ Commands:
 Debug:
     --debug
     --debug-json
-
 """
 
 import argparse
@@ -37,10 +37,17 @@ import time
 import socketio
 from urllib.parse import urlparse
 
-VERSION = "1.1.2"
+# Plugin manager version
+VERSION = "1.1.4"
+
+# Operation timeouts
+DEFAULT_TIMEOUT = 30
+INSTALL_TIMEOUT = 300
+REMOVE_TIMEOUT = 120
+RESTART_TIMEOUT = 60
+
 
 class VolumioPluginManager:
-
     def __init__(self, host, debug=False, debug_json=False):
         self.host = host.rstrip("/")
         self.debug = debug
@@ -69,6 +76,7 @@ class VolumioPluginManager:
         if self.debug_json:
             print(data)
 
+    # Socket.IO event handlers
     def register_events(self):
         @self.sio.event
         def connect():
@@ -82,14 +90,13 @@ class VolumioPluginManager:
             self.connected = False
             self.log("Socket.IO disconnected")
 
-        # Catch-all Socket.IO handler
         @self.sio.on("*")
         def socket_all(event, data):
             if self.debug_json:
                 print("\n[SOCKET EVENT]", event)
                 print(data)
 
-        # Installed plugins
+        # Installed plugins list received
         @self.sio.on("pushInstalledPlugins")
         def push_installed(data):
             self.log_json(data)
@@ -102,7 +109,7 @@ class VolumioPluginManager:
                 f"Installed plugins received: {len(self.installed_plugins)}"
             )
 
-        # Plugins catalog
+        # Available plugins catalog received
         @self.sio.on("pushAvailablePlugins")
         def push_available(data):
             self.log_json(data)
@@ -116,16 +123,17 @@ class VolumioPluginManager:
                         plugins.extend(category.get("plugins", []))
                 self.available_plugins = plugins
                 self.available_plugins_received = True
-                self.log(f"Available plugins received: {len(plugins)}")
+                self.log(
+                    f"Available plugins received: {len(plugins)}"
+                )
             except Exception as e:
                 print("Catalog error:", e)
 
-        # Installation response
+        # Installation result
         @self.sio.on("installPlugin")
         def install_event(data):
             self.log_json(data)
             if data is None:
-                self.log("installPlugin received without data")
                 return
             self.install_result = data
             self.operation_done = True
@@ -139,7 +147,7 @@ class VolumioPluginManager:
             self.install_result = False
             self.operation_done = True
 
-        # Installation statuses
+        # Installation progress
         @self.sio.on("pushInstallStatus")
         def install_status(data):
             self.install_status = data
@@ -156,14 +164,16 @@ class VolumioPluginManager:
                 self.install_result = True
                 self.operation_done = True
 
+    # Connect to Volumio Socket.IO server
     def connect(self):
         print("Connecting:", self.host)
         self.sio.connect(self.host, transports=["websocket"])
         timeout = time.time() + 15
         while time.time() < timeout:
             if (
-                    self.installed_plugins_received
-                    and self.available_plugins_received):
+                self.installed_plugins_received
+                and self.available_plugins_received
+            ):
                 break
             time.sleep(0.2)
         self.log("Synchronization complete")
@@ -174,6 +184,7 @@ class VolumioPluginManager:
         except Exception:
             pass
 
+    # Find plugin in installed/catalog lists
     def find_plugin(self, name):
         installed = None
         available = None
@@ -185,9 +196,9 @@ class VolumioPluginManager:
                 available = plugin
         return installed, available
 
+    # Select best compatible plugin variant
     def choose_variant(self, plugin):
         variants = plugin.get("stableVariants", [])
-        # MiniDSP SHD / Buster priority
         preferred = [
             "minidspshd/buster/armhf",
             "volumio/buster/armhf",
@@ -201,6 +212,7 @@ class VolumioPluginManager:
             return variants[0]
         return None
 
+    # Display installed and available plugins
     def list_plugins(self):
         print()
         print("Installed plugins:")
@@ -208,56 +220,55 @@ class VolumioPluginManager:
             print("  No plugins installed")
         else:
             for plugin in self.installed_plugins:
-                print(" ", plugin.get("name"), plugin.get("version", "?"))
+                print(
+                    " ",
+                    plugin.get("name"),
+                    plugin.get("version", "?")
+                )
         print()
         print("Available plugins:")
         for plugin in self.available_plugins:
             print(
-                " ", plugin.get("name"), "-",
-                plugin.get("prettyName", ""), "- v",
+                " ",
+                plugin.get("name"),
+                "-",
+                plugin.get("prettyName", ""),
+                "- v",
                 plugin.get("stableVersion", "?")
             )
 
+    # Display plugin information
     def show_info(self, name):
         installed, available = self.find_plugin(name)
-
         print()
-
         if available:
             print("Plugin:", available.get("prettyName", name))
             print("Internal name:", name)
             print("Category:", available.get("category", "?"))
             print("Available version:", available.get("stableVersion"))
-
             variant = self.choose_variant(available)
-
             print("Selected variant:", variant)
-
             url = (
-                "https://plugins.volumio.workers.dev/pluginsv2/downloadLatestStable/"
+                "https://plugins.volumio.workers.dev/"
+                "pluginsv2/downloadLatestStable/"
                 f"{name}/{variant}"
             )
             print("Download URL:", url)
-
         elif installed:
             print("Plugin:", installed.get("prettyName", name))
             print("Internal name:", name)
             print("Category:", installed.get("category", "?"))
             print("Catalog status: not available")
-
         else:
             print("Plugin not found:", name)
-
         print()
-
         if installed:
             print("Installed: yes")
             print("Installed version:", installed.get("version", "?"))
-            print("Installed variant: unavailable (not provided by Volumio API)")
-
         else:
             print("Installed: no")
 
+    # Install plugin from official catalog
     def install(self, name):
         installed, plugin = self.find_plugin(name)
         if installed:
@@ -267,17 +278,16 @@ class VolumioPluginManager:
             print("Plugin not found:", name)
             return False
         variant = self.choose_variant(plugin)
-        version = plugin.get("stableVersion")
         url = (
-            "https://plugins.volumio.workers.dev/pluginsv2/downloadLatestStable/"
+            "https://plugins.volumio.workers.dev/"
+            "pluginsv2/downloadLatestStable/"
             f"{name}/{variant}"
         )
         print()
         print("Installing:", plugin.get("prettyName", name))
-        print("Version:", version)
+        print("Version:", plugin.get("stableVersion"))
         print("Variant:", variant)
-        print("URL :", url)
-        # New Volumio payload
+        print("URL:", url)
         payload = {
             "url": url,
             "name": name,
@@ -287,19 +297,16 @@ class VolumioPluginManager:
         self.operation_done = False
         self.install_result = None
         self.install_status = None
-        self.log("Emitting installPlugin")
         self.sio.emit("installPlugin", payload)
-        timeout = time.time() + 300
+        timeout = time.time() + INSTALL_TIMEOUT
         while not self.operation_done and time.time() < timeout:
             time.sleep(0.5)
         if not self.operation_done:
-            print()
             print("Installation timeout")
             return False
         if self.install_result is False:
             print("Installation failed")
             return False
-        print()
         print("Installation complete")
         self.sio.emit(
             "pluginManager",
@@ -311,6 +318,7 @@ class VolumioPluginManager:
         )
         return True
 
+    # Enable plugin
     def activate(self, name):
         installed, plugin = self.find_plugin(name)
         if not installed:
@@ -323,13 +331,12 @@ class VolumioPluginManager:
         self.sio.emit(
             "pluginManager",
             {
-                "plugin": name,
                 "name": name,
                 "category": installed.get("category", "music_service"),
                 "action": "enable"
             }
         )
-        timeout = time.time() + 15
+        timeout = time.time() + DEFAULT_TIMEOUT
         while time.time() < timeout:
             self.sio.emit("getInstalledPlugins")
             time.sleep(1)
@@ -340,6 +347,33 @@ class VolumioPluginManager:
         print("Plugin enablement not confirmed")
         return False
 
+    # Disable plugin
+    def deactivate(self, name):
+        installed, plugin = self.find_plugin(name)
+        if not installed:
+            print("Plugin not installed")
+            return False
+        print("Disabling:", name)
+        self.sio.emit(
+            "pluginManager",
+            {
+                "name": name,
+                "category": installed.get("category", "music_service"),
+                "action": "disable"
+            }
+        )
+        timeout = time.time() + DEFAULT_TIMEOUT
+        while time.time() < timeout:
+            self.sio.emit("getInstalledPlugins")
+            time.sleep(1)
+            disabled, plugin = self.find_plugin(name)
+            if disabled and disabled.get("enabled") is False:
+                print("Plugin disabled")
+                return True
+        print("Plugin disablement not confirmed")
+        return False
+
+    # Install plugin from URL
     def install_url(self, url, name=None, category="music_service"):
         if name is None:
             filename = PurePosixPath(urlparse(url).path).name
@@ -354,7 +388,6 @@ class VolumioPluginManager:
         print()
         print("Installing from:", url)
         print("Plugin:", name)
-        # Volumio plugin archive payload
         payload = {
             "url": url,
             "name": name,
@@ -364,29 +397,29 @@ class VolumioPluginManager:
         self.operation_done = False
         self.install_result = None
         self.install_status = None
-        self.log("Emitting installPlugin")
         self.sio.emit("installPlugin", payload)
-        timeout = time.time() + 300
+        timeout = time.time() + INSTALL_TIMEOUT
         while not self.operation_done and time.time() < timeout:
             time.sleep(0.5)
         if not self.operation_done:
-            print()
             print("Installation timeout")
             return False
         if self.install_result is False:
             print("Installation failed")
             return False
-        print()
         print("Installation complete")
         return True
 
+    # Install a specific platform variant
     def install_variant(self, name, variant):
         url = (
-            "https://plugins.volumio.workers.dev/pluginsv2/downloadLatestStable/"
+            "https://plugins.volumio.workers.dev/"
+            "pluginsv2/downloadLatestStable/"
             f"{name}/{variant}"
         )
         return self.install_url(url, name)
 
+    # Remove plugin
     def remove(self, name):
         installed, plugin = self.find_plugin(name)
         if not installed:
@@ -394,8 +427,14 @@ class VolumioPluginManager:
             return False
         print("Removing:", name)
         self.operation_done = False
-        self.sio.emit("removePlugin", {"plugin": name, "name": name})
-        timeout = time.time() + 120
+        self.sio.emit(
+            "removePlugin",
+            {
+                "plugin": name,
+                "name": name
+            }
+        )
+        timeout = time.time() + REMOVE_TIMEOUT
         while not self.operation_done and time.time() < timeout:
             time.sleep(0.5)
         if not self.operation_done:
@@ -404,11 +443,18 @@ class VolumioPluginManager:
         print("Removal complete")
         return True
 
+    # Restart plugin
     def restart(self, name):
         print("Restarting:", name)
         self.operation_done = False
-        self.sio.emit("restartPlugin", {"plugin": name, "name": name})
-        timeout = time.time() + 60
+        self.sio.emit(
+            "restartPlugin",
+            {
+                "plugin": name,
+                "name": name
+            }
+        )
+        timeout = time.time() + RESTART_TIMEOUT
         while not self.operation_done and time.time() < timeout:
             time.sleep(0.5)
         if not self.operation_done:
@@ -417,6 +463,7 @@ class VolumioPluginManager:
         print("Restart complete")
         return True
 
+    # Update plugin
     def update(self, name):
         installed, available = self.find_plugin(name)
         if not installed:
@@ -433,18 +480,21 @@ class VolumioPluginManager:
             print("Plugin already up to date")
             return True
         print("Updating...")
-        # Remove then install
         if not self.remove(name):
             return False
         time.sleep(3)
         return self.install(name)
 
+
+# Command line interface
 def main():
     parser = argparse.ArgumentParser(
         description=f"Volumio Plugin Manager v{VERSION}"
     )
     parser.add_argument(
-        "--host", default="http://192.168.15.50:3000", help="Volumio address"
+        "--host",
+        default="http://192.168.15.50:3000",
+        help="Volumio address"
     )
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--info", metavar="PLUGIN")
@@ -453,6 +503,7 @@ def main():
     parser.add_argument("--install-variant", metavar="PLUGIN")
     parser.add_argument("--variant", metavar="PLATFORM")
     parser.add_argument("--activate", metavar="PLUGIN")
+    parser.add_argument("--deactivate", metavar="PLUGIN")
     parser.add_argument("--remove", metavar="PLUGIN")
     parser.add_argument("--restart", metavar="PLUGIN")
     parser.add_argument("--update", metavar="PLUGIN")
@@ -465,9 +516,17 @@ def main():
     )
     args = parser.parse_args()
     if not any([
-            args.list, args.info, args.install, args.install_url,
-            args.install_variant, args.activate, args.remove, args.restart,
-            args.update]):
+        args.list,
+        args.info,
+        args.install,
+        args.install_url,
+        args.install_variant,
+        args.activate,
+        args.deactivate,
+        args.remove,
+        args.restart,
+        args.update
+    ]):
         parser.print_help()
         sys.exit(1)
     if args.install_variant and not args.variant:
@@ -475,7 +534,9 @@ def main():
     if args.variant and not args.install_variant:
         parser.error("--variant requires --install-variant")
     manager = VolumioPluginManager(
-        args.host, debug=args.debug, debug_json=args.debug_json
+        args.host,
+        debug=args.debug,
+        debug_json=args.debug_json
     )
     try:
         manager.connect()
@@ -488,9 +549,14 @@ def main():
         elif args.install_url:
             manager.install_url(args.install_url)
         elif args.install_variant:
-            manager.install_variant(args.install_variant, args.variant)
+            manager.install_variant(
+                args.install_variant,
+                args.variant
+            )
         elif args.activate:
             manager.activate(args.activate)
+        elif args.deactivate:
+            manager.deactivate(args.deactivate)
         elif args.remove:
             manager.remove(args.remove)
         elif args.restart:
@@ -505,6 +571,7 @@ def main():
         print("Error:", e)
     finally:
         manager.close()
+
 
 if __name__ == "__main__":
     main()
