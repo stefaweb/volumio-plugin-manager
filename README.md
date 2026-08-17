@@ -4,8 +4,8 @@ Manage Volumio plugins through Socket.IO from the command line.
 
 Tested with:
 
-- Volumio 3.x on Raspberry Pi
-- MiniDSP SHD running Volumio 3.x
+- Volumio 3.x and 4.x on Raspberry Pi
+- miniDSP SHD running Volumio 3.x
 
 ## Requirements
 
