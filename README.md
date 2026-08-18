@@ -135,12 +135,6 @@ python volumio_plugin_manager.py --activate radio_paradise
 
 Use explicit variants carefully. A plugin can depend on hardware-specific drivers or system packages and may not work on every device.
 
-## Remove a plugin
-
-```bash
-python volumio_plugin_manager.py --remove calmradio
-```
-
 ## Restart a plugin
 
 ```bash
@@ -153,6 +147,12 @@ Update a plugin when a newer version is available in the target device catalog:
 
 ```bash
 python volumio_plugin_manager.py --update calmradio
+```
+
+## Remove a plugin
+
+```bash
+python volumio_plugin_manager.py --remove calmradio
 ```
 
 ## Debugging
@@ -169,4 +169,4 @@ Show the complete Socket.IO data received from Volumio:
 python volumio_plugin_manager.py --list --debug-json
 ```
 
-Use `--debug-json` when a command does not complete or a plugin does not appear in the catalog.
+Use `--debug-json` when a command does not complete or a plugin does not appear in the catalog. It is possible to combine the `--debug` and `--debug-json` commands for even more detailed output.
