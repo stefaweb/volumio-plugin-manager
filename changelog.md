@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 1.1.5 - 18/08/2026
+
+- Fixed plugin uninstallation on Volumio 4.
+- Uses the correct `unInstallPlugin` Socket.IO command.
+- Automatically verifies that the plugin has been removed.
+- Improved debug messages during plugin removal.
+
 ## Version 1.1.4 - 15/08/2026
 
 ### Added
