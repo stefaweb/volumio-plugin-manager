@@ -4,7 +4,7 @@
 """
 Volumio Plugin Manager
 Author: Stef
-Date:   15/08/2026
+Date:   18/08/2026
 
 Manage Volumio plugins through Socket.IO.
 
@@ -38,7 +38,7 @@ import socketio
 from urllib.parse import urlparse
 
 # Plugin manager version
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 
 # Operation timeouts
 DEFAULT_TIMEOUT = 30
@@ -413,9 +413,8 @@ class VolumioPluginManager:
     # Install a specific platform variant
     def install_variant(self, name, variant):
         url = (
-            "https://plugins.volumio.workers.dev/"
-            "pluginsv2/downloadLatestStable/"
-            f"{name}/{variant}"
+            "https://plugins.volumio.workers.dev/pluginsv2/downloadLatestStable/"
+            + name + "/" + variant
         )
         return self.install_url(url, name)
 
@@ -425,22 +424,27 @@ class VolumioPluginManager:
         if not installed:
             print("Plugin not installed")
             return False
+
         print("Removing:", name)
-        self.operation_done = False
-        self.sio.emit(
-            "removePlugin",
-            {
-                "plugin": name,
-                "name": name
-            }
-        )
-        timeout = time.time() + REMOVE_TIMEOUT
-        while not self.operation_done and time.time() < timeout:
-            time.sleep(0.5)
-        if not self.operation_done:
-            print("Removal timeout")
+        payload = {
+            "category": installed.get("category", "music_service"),
+            "name": name
+        }
+        print("[DEBUG] unInstallPlugin payload:", payload)
+        self.sio.emit("unInstallPlugin", payload)
+        print("[DEBUG] unInstallPlugin emitted")
+
+        time.sleep(2)
+        print("[DEBUG] Requesting installed plugins")
+        self.sio.emit("getInstalledPlugins")
+        time.sleep(2)
+
+        installed, plugin = self.find_plugin(name)
+        if installed:
+            print("[DEBUG] Plugin still installed")
             return False
-        print("Removal complete")
+
+        print("[DEBUG] Plugin no longer installed")
         return True
 
     # Restart plugin
