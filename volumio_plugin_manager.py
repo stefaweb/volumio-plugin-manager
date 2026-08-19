@@ -38,7 +38,7 @@ import socketio
 from urllib.parse import urlparse
 
 # Plugin manager version
-VERSION = "1.1.5"
+VERSION = "1.1.6"
 
 # Operation timeouts
 DEFAULT_TIMEOUT = 30
@@ -196,6 +196,16 @@ class VolumioPluginManager:
                 available = plugin
         return installed, available
 
+    # Return the available plugin version and its release channel
+    def catalog_version(self, plugin):
+        stable_version = plugin.get("stableVersion")
+        if stable_version:
+            return stable_version, "stable"
+        beta_version = plugin.get("betaVersion") or plugin.get("version")
+        if beta_version:
+            return beta_version, "beta"
+        return None, None
+
     # Select best compatible plugin variant
     def choose_variant(self, plugin):
         variants = plugin.get("stableVariants", [])
@@ -228,13 +238,18 @@ class VolumioPluginManager:
         print()
         print("Available plugins:")
         for plugin in self.available_plugins:
+            version, channel = self.catalog_version(plugin)
+            if version:
+                label = version
+                if channel == "beta":
+                    label += " (beta)"
+            else:
+                label = "unknown"
             print(
                 " ",
-                plugin.get("name"),
-                "-",
-                plugin.get("prettyName", ""),
-                "- v",
-                plugin.get("stableVersion", "?")
+                plugin.get("name"), "-",
+                plugin.get("prettyName", ""), "- v",
+                label
             )
 
     # Display plugin information
